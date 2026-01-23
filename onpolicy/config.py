@@ -593,7 +593,7 @@ def get_config():
     parser.add_argument(
         "--ifi",
         type=float,
-        default=0.1,
+        default=0.03,
         help="the play interval of each rendered image in saved video.",
     )
     parser.add_argument(

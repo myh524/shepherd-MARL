@@ -356,7 +356,11 @@ class MultiAgentBaseEnv(gym.Env):
                 self.render_geoms_xform.append(xform)
                 self.comm_geoms.append(entity_comm_geoms)
 
+            # print(len(self.world.walls))
+            # print("sssssssssssssssssssssssssssssssssssss")
             for wall in self.world.walls:
+                # print("wall:", wall)
+                # print("sssssssssssssssssssssssssssssssssssss")
                 corners = (
                     (wall.axis_pos - 0.5 * wall.width, wall.endpoints[0]),
                     (wall.axis_pos - 0.5 * wall.width, wall.endpoints[1]),
@@ -366,10 +370,12 @@ class MultiAgentBaseEnv(gym.Env):
                 if wall.orient == "H":
                     corners = tuple(c[::-1] for c in corners)
                 geom = rendering.make_polygon(corners)
-                if wall.hard:
-                    geom.set_color(*wall.color)
-                else:
-                    geom.set_color(*wall.color, alpha=0.5)
+                geom.set_color(*wall.color)
+                
+                # if wall.hard:
+                #     geom.set_color(*wall.color)
+                # else:
+                #     geom.set_color(*wall.color, alpha=0.5)
                 self.render_geoms.append(geom)
 
             # add geoms to viewer

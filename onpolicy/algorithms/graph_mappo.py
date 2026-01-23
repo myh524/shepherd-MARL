@@ -11,7 +11,7 @@ from onpolicy.utils.util import get_grad_norm, huber_loss, mse_loss
 from onpolicy.utils.valuenorm import ValueNorm
 from onpolicy.algorithms.utils.util import check
 import torch.jit as jit
-import torch.cuda.amp as amp
+# import torch.cuda.amp as amp
 class GR_MAPPO():
     """
         Trainer class for Graph MAPPO to update policies.
@@ -50,7 +50,9 @@ class GR_MAPPO():
         self._use_valuenorm = args.use_valuenorm
         self._use_value_active_masks = args.use_value_active_masks
         self._use_policy_active_masks = args.use_policy_active_masks
-        self.scaler = amp.GradScaler() 
+        # self.scaler = amp.GradScaler() 
+        self.scaler = None  # 禁用 AMP
+
         assert (self._use_popart and self._use_valuenorm) == False, ("self._use_popart and self._use_valuenorm can not be set True simultaneously")
         
         if self._use_popart:
@@ -110,7 +112,7 @@ class GR_MAPPO():
             value_loss = value_loss.mean()
 
         return value_loss
-    @torch.cuda.amp.autocast()
+    # @torch.cuda.amp.autocast()
     def ppo_update(self, 
                 sample:Tuple, 
                 update_actor:bool=True) -> Tuple[Tensor, Tensor, 
@@ -188,12 +190,27 @@ class GR_MAPPO():
         st = time.time()
 
         if update_actor:
-            # (policy_loss - dist_entropy * self.entropy_coef).backward()
-            self.scaler.scale((policy_loss - dist_entropy * self.entropy_coef)).backward()
+            (policy_loss - dist_entropy * self.entropy_coef).backward()
+            # self.scaler.scale((policy_loss - dist_entropy * self.entropy_coef)).backward()
         critic_backward_time = time.time() - st
-        # print(f'Actor Backward time: {critic_backward_time}')
-        # st = time.time()
-        self.scaler.unscale_(self.policy.actor_optimizer)
+        # # print(f'Actor Backward time: {critic_backward_time}')
+        # # st = time.time()
+        # self.scaler.unscale_(self.policy.actor_optimizer)
+        # if self._use_max_grad_norm:
+        #     actor_grad_norm = nn.utils.clip_grad_norm_(
+        #                                     self.policy.actor.parameters(), 
+        #                                     self.max_grad_norm)
+        # else:
+        #     actor_grad_norm = get_grad_norm(self.policy.actor.parameters())
+
+        # # self.policy.actor_optimizer.step()
+        # self.scaler.step(self.policy.actor_optimizer) #.step()
+        # # print(f'Actor Step time: {time.time() - st}')
+        # # st = time.time()
+
+        # # critic update
+        # # print(values.shape, value_preds_batch.shape)
+
         if self._use_max_grad_norm:
             actor_grad_norm = nn.utils.clip_grad_norm_(
                                             self.policy.actor.parameters(), 
@@ -201,13 +218,9 @@ class GR_MAPPO():
         else:
             actor_grad_norm = get_grad_norm(self.policy.actor.parameters())
 
-        # self.policy.actor_optimizer.step()
-        self.scaler.step(self.policy.actor_optimizer) #.step()
-        # print(f'Actor Step time: {time.time() - st}')
-        # st = time.time()
+        self.policy.actor_optimizer.step()
 
-        # critic update
-        # print(values.shape, value_preds_batch.shape)
+
         value_loss = self.cal_value_loss(values, 
                                         value_preds_batch, 
                                         return_batch, 
@@ -217,13 +230,30 @@ class GR_MAPPO():
         # print(f'Critic Zero grad time: {time.time() - st}')
         
         st = time.time()
-        critic_loss = (value_loss * self.value_loss_coef)   # TODO add gradient accumulation here
-        # critic_loss.backward()
-        self.scaler.scale(critic_loss).backward()
-        actor_backward_time = time.time() - st
-        # print(f'Critic Backward time: {actor_backward_time}')
-        # st = time.time()
-        self.scaler.unscale_(self.policy.critic_optimizer)
+        # critic_loss = (value_loss * self.value_loss_coef)   # TODO add gradient accumulation here
+        # # critic_loss.backward()
+        # self.scaler.scale(critic_loss).backward()
+        # actor_backward_time = time.time() - st
+        # # print(f'Critic Backward time: {actor_backward_time}')
+        # # st = time.time()
+        # self.scaler.unscale_(self.policy.critic_optimizer)
+        # if self._use_max_grad_norm:
+        #     critic_grad_norm = nn.utils.clip_grad_norm_(
+        #                                         self.policy.critic.parameters(), 
+        #                                         self.max_grad_norm)
+        # else:
+        #     critic_grad_norm = get_grad_norm(self.policy.critic.parameters())
+
+        # # self.policy.critic_optimizer.step()
+        # self.scaler.step(self.policy.critic_optimizer) #.step()
+        # self.scaler.update()
+        # # print(f'Critic Step time: {time.time() - st}')
+        # # print('_'*50)
+
+        critic_loss = value_loss * self.value_loss_coef
+        self.policy.critic_optimizer.zero_grad()
+        critic_loss.backward()
+
         if self._use_max_grad_norm:
             critic_grad_norm = nn.utils.clip_grad_norm_(
                                                 self.policy.critic.parameters(), 
@@ -231,11 +261,11 @@ class GR_MAPPO():
         else:
             critic_grad_norm = get_grad_norm(self.policy.critic.parameters())
 
-        # self.policy.critic_optimizer.step()
-        self.scaler.step(self.policy.critic_optimizer) #.step()
-        self.scaler.update()
-        # print(f'Critic Step time: {time.time() - st}')
-        # print('_'*50)
+        self.policy.critic_optimizer.step()
+
+        actor_backward_time = 0
+        critic_backward_time = 0
+
 
         return (value_loss, critic_grad_norm, policy_loss, 
                 dist_entropy, actor_grad_norm, imp_weights,

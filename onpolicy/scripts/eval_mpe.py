@@ -10,11 +10,14 @@ from pathlib import Path
 import torch
 
 import os, sys
+import imageio
+import os
+
 
 sys.path.append(os.path.abspath(os.getcwd()))
 
 from utils.utils import print_args, print_box
-from onpolicy.config import get_config
+from onpolicy.config import get_config , graph_config
 from multiagent.MPE_env import MPEEnv, GraphMPEEnv
 from onpolicy.envs.env_wrappers import (
     SubprocVecEnv,
@@ -34,7 +37,8 @@ def make_render_env(all_args: argparse.Namespace):
             else:
                 print(f"Can not support the {all_args.env_name} environment.")
                 raise NotImplementedError
-            env.seed(all_args.seed + rank * 1000)
+            # env.seed(all_args.seed + rank * 1000)
+            env.seed(np.random.randint(0, 100000))
             return env
 
         return init_env
@@ -61,7 +65,7 @@ def parse_args(args, parser):
     parser.add_argument("--num_landmarks", type=int, default=3)
     parser.add_argument("--num_agents", type=int, default=2, help="number of players")
     parser.add_argument(
-        "--num_obstacles", type=int, default=3, help="Number of obstacles"
+        "--num_obstacles", type=int, default=1, help="Number of obstacles"
     )
     parser.add_argument(
         "--collaborative",
@@ -156,9 +160,20 @@ def modify_args(
 
 def main(args):
     # model_dir = 'trained_models/navigation/Navigation/rmappo/wandb/offline-run-20210720_220614-1eqhk4l1/files'
+    # parser = get_config()
+    # all_args = parse_args(args, parser)
+    # all_args = modify_args(all_args.model_dir, all_args)
+
     parser = get_config()
-    all_args = parse_args(args, parser)
-    all_args = modify_args(all_args.model_dir, all_args)
+    all_args = parse_args(sys.argv[1:], parser)  # ✅ 解析 --scenario_name 等自定义参数
+    all_args, parser = graph_config(sys.argv[1:], parser)  # ✅ 补充 GNN 参数
+
+    # 强制渲染相关参数
+    all_args.use_render = True
+    all_args.save_gifs = False
+    all_args.n_rollout_threads = 1
+    all_args.render_eval = True   # ✅ 确保窗口渲染被触发
+
 
     if all_args.algorithm_name == "rmappo" or all_args.algorithm_name == "rmappg":
         assert (
@@ -219,7 +234,10 @@ def main(args):
     runner = Runner(config)
     # actor_state_dict = torch.load(str(model_dir) + '/actor.pt')
     # runner.policy.actor.load_state_dict(actor_state_dict)
-    runner.render(True)
+    actor_state_dict = torch.load(str(all_args.model_dir) + '/actor.pt')
+    runner.policy.actor.load_state_dict(actor_state_dict)   
+
+    runner.render()
 
     # post process
     envs.close()

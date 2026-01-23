@@ -55,7 +55,7 @@ class Entity(object):
         # name
         self.name = ""
         # properties:
-        self.size = 0.050
+        self.size = 0.030
         # entity can move / be pushed
         self.movable = False
         # entity collides with others
@@ -106,7 +106,7 @@ class Agent(Entity):
         # communication noise amount
         self.c_noise = None
         # control range
-        self.u_range = 1.0
+        self.u_range = 0.5
         # state
         self.state = AgentState()
         # action
@@ -129,6 +129,7 @@ class World(object):
         self.edge_weight = None
         # list of agents and entities (can change at execution-time!)
         self.agents = []
+        self.sleep = []
         self.landmarks = []
         self.scripted_agents = []
         self.scripted_agents_goals = []
@@ -141,7 +142,7 @@ class World(object):
         # color dimensionality
         self.dim_color = 3
         # simulation timestep
-        self.dt = 0.1
+        self.dt = 0.05
         # physical damping
         self.damping = 0.25
         # contact response parameters
@@ -155,7 +156,7 @@ class World(object):
     # return all entities in the world
     @property
     def entities(self):
-        return self.agents + self.landmarks + self.obstacles
+        return self.agents + self.landmarks + self.obstacles + self.sheeps
 
     # return all agents controllable by external policies
     @property
@@ -212,13 +213,23 @@ class World(object):
                 if obstacle.name == f"obstacle {id}":
                     return obstacle
             raise ValueError(f"Obstacle with id: {id} doesn't exist in the world")
-
+        elif entity_type == "sheep":  # 新增
+            for sheep in getattr(self, "sheeps", []):
+                if sheep.name == f"sheep {id}":
+                    return sheep
+            raise ValueError(f"Sheep with id: {id} doesn't exist in the world")
     # update state of the world
     def step(self):
         # set actions for scripted agents
         for agent in self.scripted_agents:
             agent.t += self.dt
             agent.action = agent.action_callback(agent, self)
+
+        # 新增：处理 sheep
+        for sheep in self.sheeps:
+            sheep.t += self.dt
+            sheep.action = sheep.action_callback(sheep, self)
+
         # gather forces applied to entities
         p_force = [None] * len(self.entities)
         # apply agent physical controls
@@ -247,6 +258,14 @@ class World(object):
                 p_force[i] = (
                     agent.mass * agent.accel if agent.accel is not None else agent.mass
                 ) * agent.action.u + noise
+
+        offset = len(self.agents) + len(self.landmarks) + len(self.obstacles)
+        for i, sheep in enumerate(self.sheeps):
+            idx = offset + i
+            if sheep.movable:
+                noise = np.random.randn(*sheep.action.u.shape) * sheep.u_noise if sheep.u_noise else 0.0
+                p_force[idx] = (sheep.mass * sheep.accel if hasattr(sheep, "accel") and sheep.accel is not None else sheep.mass) * sheep.action.u + noise
+
         return p_force
 
     # gather physical forces acting on entities

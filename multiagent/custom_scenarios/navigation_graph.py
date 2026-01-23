@@ -91,7 +91,7 @@ class Scenario(BaseScenario):
         world = World()
         # graph related attributes
         world.cache_dists = True  # cache distance between all entities
-        world.graph_mode = True
+        world.graph_mode = False
         world.graph_feat_type = args.graph_feat_type
         world.world_length = args.episode_length
         # metrics to keep track of
@@ -119,6 +119,30 @@ class Scenario(BaseScenario):
             # TODO have to change this later
             # agent.size = 0.15
             agent.max_speed = self.max_speed
+        # add sheeps
+        def sheep_policy(sheep, world):
+            force = np.zeros(world.dim_p)
+            for agent in world.policy_agents:  
+                delta = sheep.state.p_pos - agent.state.p_pos
+                dist_sq = np.sum(delta**2) + 1e-6
+                if dist_sq < 1.0 :      # agent influence range
+                    force += delta / dist_sq
+            sheep.action.u = force
+            # print(sheep.state.p_pos, sheep.action.u)
+            return sheep.action
+
+        world.sheeps = [Agent() for i in range(2)]  #先一只羊
+        for i, sheep in enumerate(world.sheeps):
+            sheep.name = f"sheep {i}"
+            sheep.collide = False
+            sheep.movable = True
+            sheep.action_callback = sheep_policy
+            sheep.global_id = global_id
+            sheep.size = 0.05
+            # sheep.accel = 3.0
+            sheep.max_speed = self.max_speed
+            sheep.u_noise = 0.0
+            global_id += 1
         # add landmarks (goals)
         world.landmarks = [Landmark() for i in range(num_landmarks)]
         world.scripted_agents_goals = [
@@ -138,7 +162,9 @@ class Scenario(BaseScenario):
             obstacle.collide = True
             obstacle.movable = False
             obstacle.global_id = global_id
+            obstacle.size = 0.05
             global_id += 1
+        
         # make initial conditions
         self.reset_world(world)
         return world
@@ -170,6 +196,9 @@ class Scenario(BaseScenario):
         # set colours for obstacles
         for i, obstacle in enumerate(world.obstacles):
             obstacle.color = np.array([0.25, 0.25, 0.25])
+        # set colours for sheep
+        for i, sheep in enumerate(world.sheeps):
+            sheep.color = np.array([0.95, 0.85, 0.15])  # yellow
         #####################################################
         self.random_scenario(world)
 
@@ -255,6 +284,25 @@ class Scenario(BaseScenario):
                 world.landmarks[num_goals_added].state.p_vel = np.zeros(world.dim_p)
                 num_goals_added += 1
         #####################################################
+        # ------------------- initialize sheep positions -------------------
+        for sheep in world.sheeps:
+            # 随机位置，避免障碍
+            while True:
+                random_pos = np.random.uniform(-self.world_size / 2, self.world_size / 2, world.dim_p)
+                # 检查障碍碰撞
+                obs_collision = self.is_obstacle_collision(random_pos, sheep.size, world)
+                # 可选：避免与 agent 或 landmark 重叠
+                agent_collision = self.check_agent_collision(random_pos, sheep.size, world.agents)
+                landmark_collision = self.is_landmark_collision(random_pos, sheep.size, world.landmarks)
+                if not obs_collision and not agent_collision and not landmark_collision:
+                    break
+
+            sheep.state.p_pos = random_pos
+            sheep.state.p_vel = np.zeros(world.dim_p)
+            # 初始化通信状态，虽然牧羊问题可能不用
+            sheep.state.c = np.zeros(world.dim_c)
+        # ---------------------------------------------------------------------
+
 
         ############ find minimum times to goals ############
         if self.max_speed is not None:
@@ -480,6 +528,9 @@ class Scenario(BaseScenario):
         if "agent" in entity.name:
             goal_pos = world.get_entity("landmark", entity.id).state.p_pos
             entity_type = entity_mapping["agent"]
+        elif "sheep" in entity.name:
+            goal_pos = entity.state.p_pos  # sheep 没有目标，自己位置就行
+            entity_type = entity_mapping["agent"]  # 或者定义一个 sheep 类型
         elif "landmark" in entity.name:
             goal_pos = pos
             entity_type = entity_mapping["landmark"]
@@ -514,6 +565,9 @@ class Scenario(BaseScenario):
         elif "obstacle" in entity.name:
             rel_goal_pos = rel_pos
             entity_type = entity_mapping["obstacle"]
+        elif "sheep" in entity.name:  # 新增
+            rel_goal_pos = rel_pos  # 羊没有目标
+            entity_type = entity_mapping.get("sheep", [0, 1])  # 自定义类型
         else:
             raise ValueError(f"{entity.name} not supported")
 
