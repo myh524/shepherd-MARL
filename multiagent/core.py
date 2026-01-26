@@ -59,7 +59,7 @@ class Entity(object):
         # entity can move / be pushed
         self.movable = False
         # entity collides with others
-        self.collide = True
+        self.collide = False
         # entity can pass through non-hard walls
         self.ghost = False
         # material density (affects mass)
@@ -129,7 +129,7 @@ class World(object):
         self.edge_weight = None
         # list of agents and entities (can change at execution-time!)
         self.agents = []
-        self.sleep = []
+        self.sheeps = []
         self.landmarks = []
         self.scripted_agents = []
         self.scripted_agents_goals = []
@@ -156,7 +156,11 @@ class World(object):
     # return all entities in the world
     @property
     def entities(self):
-        return self.agents + self.landmarks + self.obstacles + self.sheeps
+        return self.agents + self.landmarks + self.obstacles
+    
+    @property
+    def all_entities(self):
+        return self.agents + self.landmarks + self.obstacles  + self.sheeps
 
     # return all agents controllable by external policies
     @property
@@ -213,11 +217,7 @@ class World(object):
                 if obstacle.name == f"obstacle {id}":
                     return obstacle
             raise ValueError(f"Obstacle with id: {id} doesn't exist in the world")
-        elif entity_type == "sheep":  # 新增
-            for sheep in getattr(self, "sheeps", []):
-                if sheep.name == f"sheep {id}":
-                    return sheep
-            raise ValueError(f"Sheep with id: {id} doesn't exist in the world")
+
     # update state of the world
     def step(self):
         # set actions for scripted agents
@@ -231,7 +231,7 @@ class World(object):
             sheep.action = sheep.action_callback(sheep, self)
 
         # gather forces applied to entities
-        p_force = [None] * len(self.entities)
+        p_force = [None] * len(self.all_entities)
         # apply agent physical controls
         p_force = self.apply_action_force(p_force)
         # apply environment forces
@@ -296,7 +296,7 @@ class World(object):
 
     # integrate physical state
     def integrate_state(self, p_force):
-        for i, entity in enumerate(self.entities):
+        for i, entity in enumerate(self.all_entities):
             if not entity.movable:
                 continue
             entity.state.p_vel = entity.state.p_vel * (1 - self.damping)

@@ -304,7 +304,7 @@ class MPERunner(Runner):
             if True, just return the metrics of the env and don't render.
         """
         envs = self.envs
-
+        
         all_frames = []
         rewards_arr, success_rates_arr, num_collisions_arr, frac_episode_arr = (
             [],

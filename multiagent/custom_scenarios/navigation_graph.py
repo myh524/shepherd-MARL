@@ -125,13 +125,14 @@ class Scenario(BaseScenario):
             for agent in world.policy_agents:  
                 delta = sheep.state.p_pos - agent.state.p_pos
                 dist_sq = np.sum(delta**2) + 1e-6
-                if dist_sq < 1.0 :      # agent influence range
+                if dist_sq < 0.5 :      # agent influence range
                     force += delta / dist_sq
+
             sheep.action.u = force
             # print(sheep.state.p_pos, sheep.action.u)
             return sheep.action
 
-        world.sheeps = [Agent() for i in range(2)]  #先一只羊
+        world.sheeps = [Agent() for i in range(1)]  #先一只羊
         for i, sheep in enumerate(world.sheeps):
             sheep.name = f"sheep {i}"
             sheep.collide = False
@@ -140,7 +141,7 @@ class Scenario(BaseScenario):
             sheep.global_id = global_id
             sheep.size = 0.05
             # sheep.accel = 3.0
-            sheep.max_speed = self.max_speed
+            sheep.max_speed = 0.15*self.max_speed
             sheep.u_noise = 0.0
             global_id += 1
         # add landmarks (goals)
@@ -163,6 +164,7 @@ class Scenario(BaseScenario):
             obstacle.movable = False
             obstacle.global_id = global_id
             obstacle.size = 0.05
+            # self.density = 100.0
             global_id += 1
         
         # make initial conditions
@@ -403,10 +405,24 @@ class Scenario(BaseScenario):
     # done condition for each agent
     def done(self, agent: Agent, world: World) -> bool:
         # if we are using dones then return appropriate done
+        
         if self.use_dones:
-            landmark = world.get_entity("landmark", agent.id)
-            dist = np.sqrt(np.sum(np.square(agent.state.p_pos - landmark.state.p_pos)))
+            landmark = world.get_entity("landmark", 0)
+            dist = np.sqrt(np.sum(np.square(world.sheeps[0].state.p_pos - landmark.state.p_pos)))
+            # if world.current_time_step % 40 == 0:
+            #     print(f"{world.current_time_step} episodes")
             if dist < self.min_dist_thresh:
+                return True
+                if world.current_time_step >= world.world_length:
+                    print("success")
+                    return True
+                else:
+                    return False
+            elif dist > 2.5:
+                print("too_far to end")
+                return True
+            elif world.current_time_step >= world.world_length:
+                # print(f"distance: {dist}")
                 return True
             else:
                 return False
@@ -414,6 +430,7 @@ class Scenario(BaseScenario):
         # only when episode_length is reached
         else:
             if world.current_time_step >= world.world_length:
+                print("max_done")
                 return True
             else:
                 return False
@@ -422,26 +439,48 @@ class Scenario(BaseScenario):
         # Agents are rewarded based on distance to
         # its landmark, penalized for collisions
         rew = 0
-        agents_goal = world.get_entity(entity_type="landmark", id=agent.id)
-        dist_to_goal = np.sqrt(
-            np.sum(np.square(agent.state.p_pos - agents_goal.state.p_pos))
-        )
-        if dist_to_goal < self.min_dist_thresh:
-            rew += self.goal_rew
-        else:
-            rew -= dist_to_goal
-        if agent.collide:
-            for a in world.agents:
-                # do not consider collision with itself
-                if a.id == agent.id:
-                    continue
-                if self.is_collision(a, agent):
-                    rew -= self.collision_rew
+        sheep =  world.sheeps[0]
+        sheep_goal = world.get_entity(entity_type="landmark", id=0)
 
-            if self.is_obstacle_collision(
-                pos=agent.state.p_pos, entity_size=agent.size, world=world
-            ):
-                rew -= self.collision_rew
+        dist_to_goal = np.sqrt(
+            np.sum(np.square(sheep_goal.state.p_pos - sheep.state.p_pos))
+        )
+        dist_to_sheep = np.sqrt(
+            np.sum(np.square(agent.state.p_pos - sheep.state.p_pos))
+        )
+
+        v_push = sheep.action.u
+        v_goal = sheep_goal.state.p_pos - sheep.state.p_pos
+        cos_sim = np.dot(v_push, v_goal) / (np.linalg.norm(v_push) * np.linalg.norm(v_goal) + 1e-6)
+        rew1 = 0.6 * self.goal_rew * max(0.0, cos_sim)  # 越朝目标奖励越大(只奖励对的方向，不惩罚)
+        if dist_to_sheep < 0.2 or dist_to_sheep > 0.5:
+            rew1 *= 0.3
+        rew2 = 0.5 * self.goal_rew * (np.exp(1.0 - dist_to_goal)-1)   # 羊离目标越近，奖励越大
+        if dist_to_goal < self.min_dist_thresh:
+            rew2 *= 1.2
+        rew3 = -0.4 * self.goal_rew * max(0, dist_to_sheep - 0.8)  # 离羊越远，惩罚越大
+        rew = rew1 + rew2 + rew3
+        # if world.current_time_step%20==0:
+        # print(agent.name)
+        # print(f"sheep get target reward: {rew2}")
+        # print(f"agent push sheep reward: {rew1}")
+        # print(f"agent away from sheep punish: {rew3}")
+        # print(f"all_reward: {rew}")
+        # print(cos_sim)
+
+
+        # if agent.collide:
+        #     for a in world.agents:
+        #         # do not consider collision with itself
+        #         if a.id == agent.id:
+        #             continue
+        #         if self.is_collision(a, agent):
+        #             rew -= self.collision_rew
+
+        #     if self.is_obstacle_collision(
+        #         pos=agent.state.p_pos, entity_size=agent.size, world=world
+        #     ):
+        #         rew -= self.collision_rew
         return rew
 
     def observation(self, agent: Agent, world: World) -> arr:
@@ -451,10 +490,12 @@ class Scenario(BaseScenario):
         """
         # get positions of all entities in this agent's reference frame
         goal_pos = []
-        agents_goal = world.get_entity("landmark", agent.id)
-        goal_pos.append(agents_goal.state.p_pos - agent.state.p_pos)
-        return np.concatenate([agent.state.p_vel, agent.state.p_pos] + goal_pos)
-
+        sheep = world.sheeps[0]
+        sheep_goal = world.get_entity("landmark", 0)
+        goal_pos.append(sheep.state.p_pos - agent.state.p_pos)
+        goal_pos.append(sheep_goal.state.p_pos -sheep.state.p_pos)
+        return np.concatenate([agent.state.p_vel] + goal_pos)
+        
     def get_id(self, agent: Agent) -> arr:
         return np.array([agent.global_id])
 
@@ -528,9 +569,6 @@ class Scenario(BaseScenario):
         if "agent" in entity.name:
             goal_pos = world.get_entity("landmark", entity.id).state.p_pos
             entity_type = entity_mapping["agent"]
-        elif "sheep" in entity.name:
-            goal_pos = entity.state.p_pos  # sheep 没有目标，自己位置就行
-            entity_type = entity_mapping["agent"]  # 或者定义一个 sheep 类型
         elif "landmark" in entity.name:
             goal_pos = pos
             entity_type = entity_mapping["landmark"]
@@ -565,9 +603,6 @@ class Scenario(BaseScenario):
         elif "obstacle" in entity.name:
             rel_goal_pos = rel_pos
             entity_type = entity_mapping["obstacle"]
-        elif "sheep" in entity.name:  # 新增
-            rel_goal_pos = rel_pos  # 羊没有目标
-            entity_type = entity_mapping.get("sheep", [0, 1])  # 自定义类型
         else:
             raise ValueError(f"{entity.name} not supported")
 

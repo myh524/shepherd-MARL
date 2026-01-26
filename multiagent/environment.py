@@ -311,7 +311,7 @@ class MultiAgentBaseEnv(gym.Env):
 
             self.comm_geoms = []
 
-            for entity in self.world.entities:
+            for entity in self.world.all_entities:
                 geom = rendering.make_circle(entity.size)
                 xform = rendering.Transform()
 
@@ -336,6 +336,9 @@ class MultiAgentBaseEnv(gym.Env):
                             entity_comm_geoms.append(comm)
 
                 else:
+                    if "landmark" in entity.name and entity.name != "landmark 0":
+                        xform.set_scale(0.0, 0.0) 
+
                     geom.set_color(*entity.color)
                     if entity.channel is not None:
                         dim_c = self.world.dim_c
@@ -407,7 +410,7 @@ class MultiAgentBaseEnv(gym.Env):
                 pos[1] + cam_range,
             )
             # update geometry positions
-            for e, entity in enumerate(self.world.entities):
+            for e, entity in enumerate(self.world.all_entities):
                 self.render_geoms_xform[e].set_translation(*entity.state.p_pos)
                 if "agent" in entity.name:
                     self.render_geoms[e].set_color(*entity.color, alpha=0.5)

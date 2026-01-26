@@ -22,7 +22,6 @@ class MPERunner(Runner):
 
     def run(self):
         self.warmup()
-
         start = time.time()
         episodes = (
             int(self.num_env_steps) // self.episode_length // self.n_rollout_threads

@@ -13,15 +13,15 @@
 #     --use_wandb False \
 #     --num_env_steps 0
 
-# tensorboard --logdir ./onpolicy/results/GraphMPE/navigation_graph/rmappo/gpu_test/run10/logs
+# tensorboard --logdir ./onpolicy/results/GraphMPE/navigation_graph/rmappo/experiment01_24_03/run3/logs
 
 export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
 python onpolicy/scripts/eval_mpe.py \
     --env_name GraphMPE \
     --scenario_name navigation_graph \
-    --num_agents 5 \
-    --model_dir onpolicy/results/GraphMPE/navigation_graph/rmappo/debug_15min/run2/models \
-    --episode_length 100 \       #渲染时不需要很多步
+    --num_agents 1 \
+    --model_dir onpolicy/results/GraphMPE/navigation_graph/rmappo/experiment01_24_03/run1/models \
+    --episode_length 1000 \      
 
 
 

@@ -122,14 +122,14 @@ def parse_args(args, parser):
     parser.add_argument(
         "--min_dist_thresh",
         type=float,
-        default=0.05,
+        default=0.1,
         help="The minimum distance threshold to classify whether "
         "agent has reached the goal or not",
     )
     parser.add_argument(
         "--use_dones",
         type=lambda x: bool(strtobool(x)),
-        default=False,
+        default=True,
         help="Whether we want to use the 'done=True' "
         "when agent has reached the goal or just return False like "
         "the `simple.py` or `simple_spread.py`",

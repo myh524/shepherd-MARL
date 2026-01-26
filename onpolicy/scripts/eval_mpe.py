@@ -65,7 +65,7 @@ def parse_args(args, parser):
     parser.add_argument("--num_landmarks", type=int, default=3)
     parser.add_argument("--num_agents", type=int, default=2, help="number of players")
     parser.add_argument(
-        "--num_obstacles", type=int, default=1, help="Number of obstacles"
+        "--num_obstacles", type=int, default=0, help="Number of obstacles"
     )
     parser.add_argument(
         "--collaborative",
@@ -76,7 +76,7 @@ def parse_args(args, parser):
     parser.add_argument(
         "--max_speed",
         type=float,
-        default=2,
+        default=1,
         help="Max speed for agents. NOTE that if this is None, "
         "then max_speed is 2 with discrete action space",
     )
@@ -103,7 +103,7 @@ def parse_args(args, parser):
     parser.add_argument(
         "--use_dones",
         type=lambda x: bool(strtobool(x)),
-        default=False,
+        default=True,
         help="Whether we want to use the 'done=True' "
         "when agent has reached the goal or just return False like "
         "the `simple.py` or `simple_spread.py`",
@@ -236,9 +236,9 @@ def main(args):
     # runner.policy.actor.load_state_dict(actor_state_dict)
     actor_state_dict = torch.load(str(all_args.model_dir) + '/actor.pt')
     runner.policy.actor.load_state_dict(actor_state_dict)   
-
+    
     runner.render()
-
+    
     # post process
     envs.close()
 

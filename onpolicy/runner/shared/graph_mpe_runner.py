@@ -355,7 +355,7 @@ class GMPERunner(Runner):
             if True, just return the metrics of the env and don't render.
         """
         envs = self.envs
-
+        
         all_frames = []
         rewards_arr, success_rates_arr, num_collisions_arr, frac_episode_arr = (
             [],
@@ -423,6 +423,7 @@ class GMPERunner(Runner):
                     raise NotImplementedError
 
                 # Obser reward and next obs
+                
                 obs, agent_id, node_obs, adj, rewards, dones, infos = envs.step(
                     actions_env
                 )
