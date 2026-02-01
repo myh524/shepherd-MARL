@@ -1093,6 +1093,9 @@ class GraphSubprocVecEnv(ShareVecEnv):
         results = [remote.recv() for remote in self.remotes]
         self.waiting = False
         obs, ag_ids, node_obs, adj, rews, dones, infos = zip(*results)
+        # print("rews raw:", rews)
+        # print("rews shapes:", [type(r) for r in rews])
+
         return (
             np.stack(obs),
             np.stack(ag_ids),

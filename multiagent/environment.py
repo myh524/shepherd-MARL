@@ -312,58 +312,26 @@ class MultiAgentBaseEnv(gym.Env):
             self.comm_geoms = []
 
             for entity in self.world.all_entities:
-                geom = rendering.make_circle(entity.size)
-                xform = rendering.Transform()
-
+                
                 entity_comm_geoms = []
-
-                if "agent" in entity.name:
+                if "landmark" in entity.name:
+                    geom = rendering.make_circle(entity.size,filled=False)
+                    xform = rendering.Transform()
+                    geom.set_color(*entity.color,alpha=0.5)
+                    if entity.name != "landmark 0":
+                        xform.set_scale(0.0, 0.0) 
+                else:
+                    geom = rendering.make_circle(entity.size)
+                    xform = rendering.Transform()
                     geom.set_color(*entity.color, alpha=0.5)
 
-                    if not entity.silent:
-                        dim_c = self.world.dim_c
-                        # make circles to represent communication
-                        for ci in range(dim_c):
-                            comm = rendering.make_circle(entity.size / dim_c)
-                            comm.set_color(1, 1, 1)
-                            comm.add_attr(xform)
-                            offset = rendering.Transform()
-                            comm_size = entity.size / dim_c
-                            offset.set_translation(
-                                ci * comm_size * 2 - entity.size + comm_size, 0
-                            )
-                            comm.add_attr(offset)
-                            entity_comm_geoms.append(comm)
-
-                else:
-                    if "landmark" in entity.name and entity.name != "landmark 0":
-                        xform.set_scale(0.0, 0.0) 
-
-                    geom.set_color(*entity.color)
-                    if entity.channel is not None:
-                        dim_c = self.world.dim_c
-                        # make circles to represent communication
-                        for ci in range(dim_c):
-                            comm = rendering.make_circle(entity.size / dim_c)
-                            comm.set_color(1, 1, 1)
-                            comm.add_attr(xform)
-                            offset = rendering.Transform()
-                            comm_size = entity.size / dim_c
-                            offset.set_translation(
-                                ci * comm_size * 2 - entity.size + comm_size, 0
-                            )
-                            comm.add_attr(offset)
-                            entity_comm_geoms.append(comm)
                 geom.add_attr(xform)
                 self.render_geoms.append(geom)
                 self.render_geoms_xform.append(xform)
                 self.comm_geoms.append(entity_comm_geoms)
 
-            # print(len(self.world.walls))
-            # print("sssssssssssssssssssssssssssssssssssss")
             for wall in self.world.walls:
                 # print("wall:", wall)
-                # print("sssssssssssssssssssssssssssssssssssss")
                 corners = (
                     (wall.axis_pos - 0.5 * wall.width, wall.endpoints[0]),
                     (wall.axis_pos - 0.5 * wall.width, wall.endpoints[1]),
@@ -374,18 +342,8 @@ class MultiAgentBaseEnv(gym.Env):
                     corners = tuple(c[::-1] for c in corners)
                 geom = rendering.make_polygon(corners)
                 geom.set_color(*wall.color)
-                
-                # if wall.hard:
-                #     geom.set_color(*wall.color)
-                # else:
-                #     geom.set_color(*wall.color, alpha=0.5)
-                self.render_geoms.append(geom)
 
-            # add geoms to viewer
-            # for viewer in self.viewers:
-            #     viewer.geoms = []
-            #     for geom in self.render_geoms:
-            #         viewer.add_geom(geom)
+                self.render_geoms.append(geom)
 
             for viewer in self.viewers:
                 viewer.geoms = []
@@ -412,19 +370,7 @@ class MultiAgentBaseEnv(gym.Env):
             # update geometry positions
             for e, entity in enumerate(self.world.all_entities):
                 self.render_geoms_xform[e].set_translation(*entity.state.p_pos)
-                if "agent" in entity.name:
-                    self.render_geoms[e].set_color(*entity.color, alpha=0.5)
-
-                    if not entity.silent:
-                        for ci in range(self.world.dim_c):
-                            color = 1 - entity.state.c[ci]
-                            self.comm_geoms[e][ci].set_color(color, color, color)
-                else:
-                    self.render_geoms[e].set_color(*entity.color)
-                    if entity.channel is not None:
-                        for ci in range(self.world.dim_c):
-                            color = 1 - entity.channel[ci]
-                            self.comm_geoms[e][ci].set_color(color, color, color)
+                self.render_geoms[e].set_color(*entity.color, alpha=0.8)
 
             # render the graph connections
             if hasattr(self.world, "graph_mode"):
@@ -807,6 +753,7 @@ class MultiAgentGraphEnv(MultiAgentBaseEnv):
             node_obs_n.append(node_obs)
             adj_n.append(adj)
             reward = self._get_reward(agent)
+            # print(agent.name, type(reward), reward)
             reward_n.append(reward)
             done_n.append(self._get_done(agent))
             info = {"individual_reward": reward}

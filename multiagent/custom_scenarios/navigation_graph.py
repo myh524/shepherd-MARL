@@ -125,9 +125,8 @@ class Scenario(BaseScenario):
             for agent in world.policy_agents:  
                 delta = sheep.state.p_pos - agent.state.p_pos
                 dist_sq = np.sum(delta**2) + 1e-6
-                if dist_sq < 0.5 :      # agent influence range
-                    force += delta / dist_sq
-
+                if dist_sq < world.agent_influence_range :      # agent influence range
+                    force += 0.1 * delta / dist_sq
             sheep.action.u = force
             # print(sheep.state.p_pos, sheep.action.u)
             return sheep.action
@@ -141,7 +140,7 @@ class Scenario(BaseScenario):
             sheep.global_id = global_id
             sheep.size = 0.05
             # sheep.accel = 3.0
-            sheep.max_speed = 0.15*self.max_speed
+            sheep.max_speed = 0.8*self.max_speed
             sheep.u_noise = 0.0
             global_id += 1
         # add landmarks (goals)
@@ -154,6 +153,7 @@ class Scenario(BaseScenario):
             landmark.name = f"landmark {i}"
             landmark.collide = False
             landmark.movable = False
+            landmark.size = 0.3
             landmark.global_id = global_id
             global_id += 1
         # add obstacles
@@ -304,8 +304,9 @@ class Scenario(BaseScenario):
             # 初始化通信状态，虽然牧羊问题可能不用
             sheep.state.c = np.zeros(world.dim_c)
         # ---------------------------------------------------------------------
-
-
+        # 初始化 dist_to_goal 和 prev_dist_to_goal 为标量
+        world.dist_to_goal = world.get_dist_to_goal
+        world.prev_dist_to_goal = world.dist_to_goal
         ############ find minimum times to goals ############
         if self.max_speed is not None:
             for agent in world.agents:
@@ -405,96 +406,187 @@ class Scenario(BaseScenario):
     # done condition for each agent
     def done(self, agent: Agent, world: World) -> bool:
         # if we are using dones then return appropriate done
-        
         if self.use_dones:
-            landmark = world.get_entity("landmark", 0)
-            dist = np.sqrt(np.sum(np.square(world.sheeps[0].state.p_pos - landmark.state.p_pos)))
-            # if world.current_time_step % 40 == 0:
-            #     print(f"{world.current_time_step} episodes")
-            if dist < self.min_dist_thresh:
+
+            goal = world.get_entity(entity_type="landmark", id=0)
+            success = all(
+                np.linalg.norm(s.state.p_pos - goal.state.p_pos) < 0.5*self.min_dist_thresh
+                for s in world.sheeps
+            )
+            if success and world.current_time_step != 1:
+                print(f"success! {world.current_time_step}")
                 return True
-                if world.current_time_step >= world.world_length:
-                    print("success")
-                    return True
-                else:
-                    return False
-            elif dist > 2.5:
+            
+            if world.dist_to_goal > 2.5:
                 print("too_far to end")
                 return True
             elif world.current_time_step >= world.world_length:
-                # print(f"distance: {dist}")
                 return True
             else:
                 return False
-        # it not using dones then return done
-        # only when episode_length is reached
         else:
             if world.current_time_step >= world.world_length:
                 print("max_done")
                 return True
             else:
                 return False
-
+            
     def reward(self, agent: Agent, world: World) -> float:
-        # Agents are rewarded based on distance to
-        # its landmark, penalized for collisions
+
         rew = 0
         sheep =  world.sheeps[0]
-        sheep_goal = world.get_entity(entity_type="landmark", id=0)
+        goal = world.get_entity(entity_type="landmark", id=0)
+        p_a = agent.state.p_pos
+        p_s = sheep.state.p_pos
+        p_g = goal.state.p_pos
+        v_as = p_s - p_a          # agent -> sheep
+        v_sg = p_g - p_s          # sheep -> goal
+        d_as = np.linalg.norm(v_as)
+        d_sg = np.linalg.norm(v_sg)
 
-        dist_to_goal = np.sqrt(
-            np.sum(np.square(sheep_goal.state.p_pos - sheep.state.p_pos))
-        )
-        dist_to_sheep = np.sqrt(
-            np.sum(np.square(agent.state.p_pos - sheep.state.p_pos))
-        )
+        # 个体作用奖励
+        rew_approach = 0.0
+        rew_progress = 0.0
+        rew_push = 0.0
+        rew_energy = 0.0
+        rew_punish = 0.0
 
-        v_push = sheep.action.u
-        v_goal = sheep_goal.state.p_pos - sheep.state.p_pos
-        cos_sim = np.dot(v_push, v_goal) / (np.linalg.norm(v_push) * np.linalg.norm(v_goal) + 1e-6)
-        rew1 = 0.6 * self.goal_rew * max(0.0, cos_sim)  # 越朝目标奖励越大(只奖励对的方向，不惩罚)
-        if dist_to_sheep < 0.2 or dist_to_sheep > 0.5:
-            rew1 *= 0.3
-        rew2 = 0.5 * self.goal_rew * (np.exp(1.0 - dist_to_goal)-1)   # 羊离目标越近，奖励越大
-        if dist_to_goal < self.min_dist_thresh:
-            rew2 *= 1.2
-        rew3 = -0.4 * self.goal_rew * max(0, dist_to_sheep - 0.8)  # 离羊越远，惩罚越大
-        rew = rew1 + rew2 + rew3
-        # if world.current_time_step%20==0:
+        # 不作用惩罚
+        rew_approach = -1.5 * max(0.0, d_as - world.agent_influence_range)
+
+        # 羊整体推进奖励
+        delta_goal = world.prev_dist_to_goal - world.dist_to_goal
+        rew_progress = 50 * delta_goal / world.dt
+
+        # agent近target惩罚
+        # if np.linalg.norm(goal.state.p_pos - agent.state.p_pos) < self.min_dist_thresh:
+        #     rew_punish = -2.0
+
+        # 推动方向奖励
+        if d_as < world.agent_influence_range:
+            cos_push = np.dot(v_as, v_sg) / (
+                np.linalg.norm(v_as) * np.linalg.norm(v_sg) + 1e-6
+            )
+            rew_push = 2.5 * cos_push
+
+        rew = rew_approach + rew_progress + rew_punish + rew_push 
+        # if world.current_time_step == 199 and world.dist_to_goal < 0.1:
+        #     print(agent.name)
+        #     print(p_a)
+        #     print("infulence             angle         hold      approach        rew")
+        #     print(f"{(rew_push+rew_side+rew_progress):.2f}               {rew_angle:.2f}         {rew_hold:.2f}         {rew_approach:.2f}         {rew:.2f}")    
+        #     print('\n')
+
         # print(agent.name)
-        # print(f"sheep get target reward: {rew2}")
-        # print(f"agent push sheep reward: {rew1}")
-        # print(f"agent away from sheep punish: {rew3}")
-        # print(f"all_reward: {rew}")
-        # print(cos_sim)
+        # print(f"rew_approach :{rew_approach}")
+        # print(f"rew_progress :{rew_progress}")
+        # print(f"rew_punish   :{rew_punish}")
+        # print(f"rew_push :{rew_push}")
+        # # print(f"rew_energy   :{rew_energy}")
+        # print('\n')
 
-
-        # if agent.collide:
-        #     for a in world.agents:
-        #         # do not consider collision with itself
-        #         if a.id == agent.id:
-        #             continue
-        #         if self.is_collision(a, agent):
-        #             rew -= self.collision_rew
-
-        #     if self.is_obstacle_collision(
-        #         pos=agent.state.p_pos, entity_size=agent.size, world=world
-        #     ):
-        #         rew -= self.collision_rew
         return rew
 
+    # def reward(self, agent: Agent, world: World) -> float:
+    #     w_push = 0.8
+    #     w_side = 0.4
+    #     w_angle = 0.3
+    #     w_prog = 1.5
+    #     w_hold = 1.0
+    #     w_appr = 0.8
+    #     d_side = 0.4
+    #     sigma = 0.25
+
+    #     rew = 0
+    #     sheep =  world.sheeps[0]
+    #     goal = world.get_entity(entity_type="landmark", id=0)
+    #     p_a = agent.state.p_pos
+    #     p_s = sheep.state.p_pos
+    #     p_g = goal.state.p_pos
+    #     v_as = p_s - p_a          # agent -> sheep
+    #     v_sg = p_g - p_s          # sheep -> goal
+
+    #     # 个体作用奖励
+    #     rew_progress = 0.0
+    #     rew_push = 0.0
+    #     rew_side = 0.0
+    #     rew_hold = 0.0
+    #     rew_approach = 0.0
+    #     rew_angle = 0.0
+
+    #     # 推动方向奖励
+    #     cos_push = np.dot(v_as, v_sg) / (
+    #         np.linalg.norm(v_as) * np.linalg.norm(v_sg) + 1e-6
+    #     )
+    #     rew_push = w_push * cos_push        # 反向也有惩罚
+    #     # 侧向包围奖励
+    #     e_goal = v_sg / (np.linalg.norm(v_sg) + 1e-6)       # 羊->目标 的单位向量
+    #     lat = v_as - np.dot(v_as, e_goal) * e_goal      # agent 相对羊的横向分量
+    #     lat_dist = np.linalg.norm(lat)
+    #     rew_side = w_side * np.exp(-((lat_dist - d_side) ** 2) / sigma)
+    #     rew_side *= (1.0 - max(0.0, cos_push))
+    #     # 羊整体推进奖励
+    #     if cos_push > 0.3: 
+    #         delta_goal = world.prev_dist_to_goal - world.dist_to_goal
+    #         rew_progress = w_prog * delta_goal / world.dt
+
+    #     # 去重叠惩罚（防策略同质）        
+    #     v_i = agent.state.p_pos - sheep.state.p_pos
+    #     v_i_norm = np.linalg.norm(v_i) + 1e-6
+    #     for other in world.agents:
+    #         if other is agent:
+    #             continue
+    #         v_j = other.state.p_pos - sheep.state.p_pos
+    #         v_j_norm = np.linalg.norm(v_j) + 1e-6
+    #         cos_ij = np.dot(v_i, v_j) / (v_i_norm * v_j_norm)
+    #         # cos 越接近 1，惩罚越大
+    #         rew_angle -= w_angle * max(0.0, cos_ij)
+
+    #     # 远离羊群的不作为惩罚
+    #     rew_approach = - w_appr * max(0.0, np.linalg.norm(v_as) - 0.9*world.agent_influence_range)
+
+    #     # 目标区稳态围栏奖励（保证稳定在目标点）
+    #     sheep_speed = np.linalg.norm(sheep.state.p_vel)
+    #     rew_hold = w_hold * np.exp(-sheep_speed)                     
+
+    #     if np.linalg.norm(v_as) > world.agent_influence_range:  # 靠近阶段
+    #         rew = rew_approach
+    #     else:                                                   # 作用阶段
+    #         alpha = np.clip((world.dist_to_goal - 0.2) / 0.6, 0, 1)
+    #         rew = alpha * (rew_push + rew_side + rew_progress) + (1-alpha) * rew_hold + rew_angle
+        
+    #     # if world.current_time_step == 199 and world.dist_to_goal < 0.1:
+    #     #     print(agent.name)
+    #     #     print(p_a)
+    #     #     print("infulence             angle         hold      approach        rew")
+    #     #     print(f"{(rew_push+rew_side+rew_progress):.2f}               {rew_angle:.2f}         {rew_hold:.2f}         {rew_approach:.2f}         {rew:.2f}")    
+    #     #     print('\n')
+        
+    #     print(f"rew_push: {rew_push}")
+    #     print(f"rew_side: {rew_side}")
+    #     print(f"rew_angle : {rew_angle}")
+    #     print(f"rew_progress: {rew_progress}")
+    #     print(f"rew_hold: {rew_hold}")
+    #     print(f"rew_approach: {rew_approach}")
+    #     print(rew)
+
+    #     return rew
+
     def observation(self, agent: Agent, world: World) -> arr:
-        """
-        Return:
-            [agent_vel, agent_pos, goal_pos]
-        """
-        # get positions of all entities in this agent's reference frame
-        goal_pos = []
         sheep = world.sheeps[0]
-        sheep_goal = world.get_entity("landmark", 0)
-        goal_pos.append(sheep.state.p_pos - agent.state.p_pos)
-        goal_pos.append(sheep_goal.state.p_pos -sheep.state.p_pos)
-        return np.concatenate([agent.state.p_vel] + goal_pos)
+        goal = world.get_entity("landmark", 0)
+
+        obs = []
+        # agent 自身速度
+        obs.append(agent.state.p_vel)
+        # 羊相对 agent
+        obs.append(sheep.state.p_pos - agent.state.p_pos)
+        # 羊速度
+        obs.append(sheep.state.p_vel)
+        # 羊->目标
+        obs.append(goal.state.p_pos - sheep.state.p_pos)
+
+        return np.concatenate(obs)
         
     def get_id(self, agent: Agent) -> arr:
         return np.array([agent.global_id])

@@ -102,7 +102,7 @@ def parse_args(args, parser):
     parser.add_argument(
         "--max_speed",
         type=float,
-        default=2,
+        default=0.3,
         help="Max speed for agents. NOTE that if this is None, "
         "then max_speed is 2 with discrete action space",
     )
@@ -122,7 +122,7 @@ def parse_args(args, parser):
     parser.add_argument(
         "--min_dist_thresh",
         type=float,
-        default=0.1,
+        default=0.3,
         help="The minimum distance threshold to classify whether "
         "agent has reached the goal or not",
     )

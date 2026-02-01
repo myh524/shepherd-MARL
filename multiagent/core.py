@@ -130,6 +130,10 @@ class World(object):
         # list of agents and entities (can change at execution-time!)
         self.agents = []
         self.sheeps = []
+        self.dist_to_goal = 0.0
+        self.prev_dist_to_goal = 0.0
+        self.agent_influence_range = 0.3
+        self.hold_count = []
         self.landmarks = []
         self.scripted_agents = []
         self.scripted_agents_goals = []
@@ -144,7 +148,7 @@ class World(object):
         # simulation timestep
         self.dt = 0.05
         # physical damping
-        self.damping = 0.25
+        self.damping = 0.4
         # contact response parameters
         self.contact_force = 1e2
         self.contact_margin = 1e-3
@@ -218,6 +222,13 @@ class World(object):
                     return obstacle
             raise ValueError(f"Obstacle with id: {id} doesn't exist in the world")
 
+    @property
+    def get_dist_to_goal(self):
+        dist_to_goal = 0.0
+        for sheep in self.sheeps:
+            dist_to_goal += float(np.linalg.norm(sheep.state.p_pos - self.get_entity("landmark", 0).state.p_pos))/3.0
+        return dist_to_goal
+
     # update state of the world
     def step(self):
         # set actions for scripted agents
@@ -225,7 +236,7 @@ class World(object):
             agent.t += self.dt
             agent.action = agent.action_callback(agent, self)
 
-        # 新增：处理 sheep
+        # 处理 sheep
         for sheep in self.sheeps:
             sheep.t += self.dt
             sheep.action = sheep.action_callback(sheep, self)
@@ -238,7 +249,10 @@ class World(object):
         p_force = self.apply_environment_force(p_force)
         # integrate physical state
         self.integrate_state(p_force)
-        # update agent state
+        # update state
+        self.prev_dist_to_goal = self.dist_to_goal
+        self.dist_to_goal = self.get_dist_to_goal
+
         for agent in self.agents:
             agent.t += self.dt
             self.update_agent_state(agent)
