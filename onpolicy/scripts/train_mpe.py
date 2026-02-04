@@ -88,10 +88,10 @@ def parse_args(args, parser):
         default="simple_spread",
         help="Which scenario to run on",
     )
-    parser.add_argument("--num_landmarks", type=int, default=3)
-    parser.add_argument("--num_agents", type=int, default=2, help="number of players")
+    parser.add_argument("--num_landmarks", type=int, default=1)
+    parser.add_argument("--num_agents", type=int, default=1, help="number of players")
     parser.add_argument(
-        "--num_obstacles", type=int, default=3, help="Number of obstacles"
+        "--num_obstacles", type=int, default=0, help="Number of obstacles"
     )
     parser.add_argument(
         "--collaborative",

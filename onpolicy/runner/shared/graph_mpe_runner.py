@@ -18,7 +18,7 @@ class GMPERunner(Runner):
     collection for the MPEs. See parent class for details
     """
 
-    dt = 0.1
+    dt = 0.05
 
     def __init__(self, config):
         super(GMPERunner, self).__init__(config)

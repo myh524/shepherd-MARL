@@ -410,7 +410,7 @@ class Scenario(BaseScenario):
 
             goal = world.get_entity(entity_type="landmark", id=0)
             success = all(
-                np.linalg.norm(s.state.p_pos - goal.state.p_pos) < 0.5*self.min_dist_thresh
+                np.linalg.norm(s.state.p_pos - goal.state.p_pos) < 0.6*self.min_dist_thresh
                 for s in world.sheeps
             )
             if success and world.current_time_step != 1:
@@ -452,7 +452,7 @@ class Scenario(BaseScenario):
         rew_punish = 0.0
 
         # 不作用惩罚
-        rew_approach = -1.5 * max(0.0, d_as - world.agent_influence_range)
+        rew_approach = -1.2 * max(0.0, d_as - world.agent_influence_range)
 
         # 羊整体推进奖励
         delta_goal = world.prev_dist_to_goal - world.dist_to_goal
@@ -467,7 +467,10 @@ class Scenario(BaseScenario):
             cos_push = np.dot(v_as, v_sg) / (
                 np.linalg.norm(v_as) * np.linalg.norm(v_sg) + 1e-6
             )
-            rew_push = 2.5 * cos_push
+            if cos_push < 0:
+                rew_push = - 2.5 * cos_push * cos_push
+            else:
+                rew_push = 2.5 * cos_push * cos_push
 
         rew = rew_approach + rew_progress + rew_punish + rew_push 
         # if world.current_time_step == 199 and world.dist_to_goal < 0.1:
@@ -618,11 +621,11 @@ class Scenario(BaseScenario):
         # node observations
         node_obs = []
         if world.graph_feat_type == "global":
-            for i, entity in enumerate(world.entities):
+            for i, entity in enumerate(world.all_entities):
                 node_obs_i = self._get_entity_feat_global(entity, world)
                 node_obs.append(node_obs_i)
         elif world.graph_feat_type == "relative":
-            for i, entity in enumerate(world.entities):
+            for i, entity in enumerate(world.all_entities):
                 node_obs_i = self._get_entity_feat_relative(agent, entity, world)
                 node_obs.append(node_obs_i)
 
@@ -659,12 +662,12 @@ class Scenario(BaseScenario):
         pos = entity.state.p_pos
         vel = entity.state.p_vel
         if "agent" in entity.name:
-            goal_pos = world.get_entity("landmark", entity.id).state.p_pos
+            goal_pos = world.sheeps[0].state.p_pos
             entity_type = entity_mapping["agent"]
         elif "landmark" in entity.name:
             goal_pos = pos
             entity_type = entity_mapping["landmark"]
-        elif "obstacle" in entity.name:
+        elif "sheep" in entity.name:
             goal_pos = pos
             entity_type = entity_mapping["obstacle"]
         else:

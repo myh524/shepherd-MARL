@@ -132,7 +132,7 @@ class World(object):
         self.sheeps = []
         self.dist_to_goal = 0.0
         self.prev_dist_to_goal = 0.0
-        self.agent_influence_range = 0.3
+        self.agent_influence_range = 0.2
         self.hold_count = []
         self.landmarks = []
         self.scripted_agents = []

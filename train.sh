@@ -5,22 +5,22 @@ CUDA_VISIBLE_DEVICES=0 python -u onpolicy/scripts/train_mpe.py \
   --env_name "GraphMPE" \
   --algorithm_name "rmappo" \
   --seed 0 \
-  --experiment_name "1v1_02_01_06" \
+  --experiment_name "1v1_02_03_01" \
   --scenario_name "navigation_graph" \
   --num_agents 1 \
   --collision_rew 3 \
   --n_training_threads 1 \
   --n_rollout_threads 32 \
   --num_mini_batch 2 \
-  --episode_length 300 \
-  --num_env_steps 600000 \
+  --episode_length 400 \
+  --num_env_steps 1000000 \
   --ppo_epoch 5 \
   --use_ReLU \
   --lr 3e-4 --critic_lr 1e-3 \
   --max_grad_norm 0.5 \
   --user_name "marl" \
   --use_cent_obs True \
-  --graph_feat_type relative \
+  --graph_feat_type global \
   --auto_mini_batch_size False \
   --target_mini_batch_size 64 \
   --use_wandb False
